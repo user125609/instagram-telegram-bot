@@ -4,7 +4,7 @@ from telegram import Bot
 from telegram.error import TelegramError
 import shutil
 
-# 🔐 Umgebungsvariablen
+# 🔐 Umgebungsvariablen laden
 TG_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 TG_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
 TG_LOG_CHAT_ID = os.getenv('TELEGRAM_LOG_CHAT_ID')
@@ -14,34 +14,37 @@ TARGET = os.getenv('TARGET_USERNAME')
 bot = Bot(token=TG_TOKEN)
 
 # ✅ Testnachricht nach Bot-Start
-bot.send_message(chat_id=TG_LOG_CHAT_ID, text="✅ Bot wurde erfolgreich gestartet (Cookie-Login aktiv)")
+try:
+    bot.send_message(chat_id=TG_LOG_CHAT_ID, text="✅ Bot wurde erfolgreich gestartet (Cookie-Login aktiv)")
+except TelegramError as e:
+    print(f"⚠️ Fehler beim Senden der Startnachricht: {e}")
 
-# 📥 Bereits gesendete IDs aus Telegram laden
+# 📥 Bereits gesendete IDs aus Telegram-Log abrufen
 def load_sent_ids():
     print("📥 Lade gesendete IDs aus Telegram-Log…")
     try:
         updates = bot.get_updates(limit=500)
-        ids = set()
-        for update in updates:
-            if update.message and update.message.chat.id == int(TG_LOG_CHAT_ID):
-                lines = update.message.text.strip().splitlines()
-                for line in lines:
-                    if line.startswith("ID:"):
-                        ids.add(line.replace("ID:", "").strip())
+        ids = {
+            line.replace("ID:", "").strip()
+            for update in updates
+            if update.message and update.message.chat.id == int(TG_LOG_CHAT_ID)
+            for line in update.message.text.strip().splitlines()
+            if line.startswith("ID:")
+        }
         print(f"✅ {len(ids)} gesendete IDs erkannt.")
         return ids
     except TelegramError as e:
         print(f"⚠️ Fehler beim Lesen der Log-IDs: {e}")
         return set()
 
-# 📤 Neue gesendete ID in Telegram loggen
+# 📤 Neue ID in Telegram loggen
 def log_sent_id(item_id):
     try:
         bot.send_message(chat_id=TG_LOG_CHAT_ID, text=f"ID: {item_id}")
     except TelegramError as e:
-        print(f"⚠️ Fehler beim Loggen in Telegram: {e}")
+        print(f"⚠️ Fehler beim Loggen der ID: {e}")
 
-# 🔧 Instaloader vorbereiten mit Cookie
+# 🔧 Instaloader mit Cookie konfigurieren
 loader = instaloader.Instaloader(
     download_videos=True,
     save_metadata=False,
@@ -50,7 +53,7 @@ loader = instaloader.Instaloader(
     dirname_pattern="downloads"
 )
 
-# 📎 Cookie-Datei laden (Name = Benutzername der Session-Datei)
+# 📎 Session-Datei laden (Cookie-Login)
 try:
     loader.load_session_from_file('user25180_u')
     print("✅ Session-Cookie geladen und Login aktiv")
@@ -66,11 +69,11 @@ except Exception as e:
     print(f"❌ Fehler beim Laden des Zielprofils: {e}")
     exit(1)
 
-# 📑 Bereits gesendete IDs laden
+# 📑 Bereits gesendete Story-IDs laden
 sent_items = load_sent_ids()
 new_content_found = False
 
-# 📥 Stories abrufen und verarbeiten
+# 📥 Stories laden und filtern
 for story in loader.get_stories(userids=[profile.userid]):
     for item in story.get_items():
         item_id = str(item.mediaid)
@@ -82,13 +85,14 @@ for story in loader.get_stories(userids=[profile.userid]):
         try:
             path = loader.download_storyitem(item, TARGET)
         except Exception as e:
-            print(f"⚠️ Fehler beim Herunterladen von Story {item_id}: {e}")
+            print(f"⚠️ Fehler beim Herunterladen: {e}")
             continue
 
         if not os.path.exists(path):
-            print("⚠️ Kein gültiger Download-Pfad – wird übersprungen.")
+            print("⚠️ Kein gültiger Pfad – übersprungen.")
             continue
 
+        # 📤 Telegram-Versand
         sent = False
         for file in os.listdir(path):
             full_path = os.path.join(path, file)
@@ -105,7 +109,7 @@ for story in loader.get_stories(userids=[profile.userid]):
                 if sent:
                     log_sent_id(item_id)
                     new_content_found = True
-                    break  # Nur 1 Datei pro Story senden
+                    break  # nur eine Datei pro Story senden
             except Exception as e:
                 print(f"⚠️ Fehler beim Senden: {e}")
 
@@ -114,5 +118,6 @@ if os.path.exists("downloads"):
     shutil.rmtree("downloads")
     print("🧼 Downloads gelöscht")
 
+# ℹ️ Statusmeldung
 if not new_content_found:
     print("ℹ️ Keine neuen Storys gefunden.")
