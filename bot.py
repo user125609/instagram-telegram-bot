@@ -5,7 +5,7 @@ from telegram import Bot
 from telegram.error import TelegramError
 import shutil
 
-# 🔐 Umgebungsvariablen
+# 🔐 Umgebungsvariablen aus GitHub Secrets
 TG_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 TG_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
 TG_LOG_CHAT_ID = os.getenv('TELEGRAM_LOG_CHAT_ID')
@@ -14,10 +14,10 @@ TARGET = os.getenv('TARGET_USERNAME')
 # 📲 Telegram-Bot initialisieren
 bot = Bot(token=TG_TOKEN)
 
-# ✅ Testnachricht nach Bot-Start
+# ✅ Testnachricht nach Start
 bot.send_message(chat_id=TG_LOG_CHAT_ID, text="✅ Bot wurde erfolgreich gestartet (Cookie-Login aktiv)")
 
-# 📥 Bereits gesendete IDs aus Telegram laden
+# 📥 Bereits gesendete IDs aus Telegram-Log laden
 def load_sent_ids():
     print("📥 Lade gesendete IDs aus Telegram-Log…")
     try:
@@ -51,27 +51,32 @@ loader = instaloader.Instaloader(
     dirname_pattern="downloads"
 )
 
-# 📎 Cookie-Datei laden
+# 📎 Cookie-Datei laden (Session-Datei muss in ~/.config/instaloader vorhanden sein)
 try:
     loader.load_session_from_file('user25180_u')
     print("✅ Session-Cookie geladen und Login aktiv")
 except Exception as e:
     print(f"❌ Fehler beim Laden der Session: {e}")
+    bot.send_message(chat_id=TG_LOG_CHAT_ID, text=f"❌ Fehler beim Laden der Session:\n{e}")
     exit(1)
 
-# 💤 Warten, damit IG uns nicht blockt
-print("⏳ Warte 10 Sekunden vor dem Laden des Profils…")
-time.sleep(10)
-
-# 🔎 Zielprofil laden
+# 🔎 Zielprofil laden (mit Fehlerbehandlung)
 try:
+    print("⏳ Warte 10 Sekunden vor dem Laden des Profils…")
+    time.sleep(10)
     profile = instaloader.Profile.from_username(loader.context, TARGET)
     print(f"📡 Zielprofil geladen: {profile.username}")
 except Exception as e:
-    print(f"❌ Fehler beim Laden des Zielprofils: {e}")
+    error_message = str(e)
+    print(f"❌ Fehler beim Laden des Zielprofils: {error_message}")
+
+    if "401" in error_message or "Please wait a few minutes" in error_message:
+        bot.send_message(chat_id=TG_LOG_CHAT_ID, text="⚠️ Instagram blockiert aktuell Anfragen (401 Unauthorized). Bitte warte einige Minuten.")
+    else:
+        bot.send_message(chat_id=TG_LOG_CHAT_ID, text=f"❌ Fehler beim Laden des Zielprofils:\n{error_message}")
     exit(1)
 
-# 📑 Bereits gesendete IDs laden
+# 📑 Gesendete IDs laden
 sent_items = load_sent_ids()
 new_content_found = False
 
@@ -110,7 +115,7 @@ for story in loader.get_stories(userids=[profile.userid]):
                 if sent:
                     log_sent_id(item_id)
                     new_content_found = True
-                    break  # Nur 1 Datei pro Story senden
+                    break  # Nur eine Datei senden
             except Exception as e:
                 print(f"⚠️ Fehler beim Senden: {e}")
 
