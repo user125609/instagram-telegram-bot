@@ -3,7 +3,7 @@ name: Instagram to Telegram Bot
 on:
   workflow_dispatch:
   schedule:
-    - cron: '*/30 * * * *' # Alle 30 Minuten ausführen
+    - cron: '*/30 * * * *'  # Alle 30 Minuten ausführen
 
 jobs:
   run-bot:
@@ -22,7 +22,7 @@ jobs:
       run: |
         pip install -r requirements.txt
 
-    - name: Restore Instagram session from secret
+    - name: Restore Instagram session from GitHub Secret
       run: |
         mkdir -p ~/.config/instaloader
         echo "${{ secrets.IG_SESSION_COOKIE }}" | base64 -d > ~/.config/instaloader/session-user25180_u
