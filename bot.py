@@ -1,0 +1,117 @@
+import os
+import instaloader
+from telegram import Bot
+from telegram.error import TelegramError
+import shutil
+
+# 🔐 Umgebungsvariablen
+IG_USER = os.getenv('INSTAGRAM_USERNAME')
+IG_PASS = os.getenv('INSTAGRAM_PASSWORD')
+TG_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
+TG_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
+TG_LOG_CHAT_ID = os.getenv('TELEGRAM_LOG_CHAT_ID')
+TARGET = os.getenv('TARGET_USERNAME')
+
+# 📲 Telegram-Bot initialisieren
+bot = Bot(token=TG_TOKEN)
+
+# 📥 Bereits gesendete IDs aus Telegram laden
+def load_sent_ids():
+    print("📥 Lade gesendete IDs aus Telegram-Log…")
+    try:
+        updates = bot.get_updates(limit=500)
+        ids = set()
+        for update in updates:
+            if update.message and update.message.chat.id == int(TG_LOG_CHAT_ID):
+                lines = update.message.text.strip().splitlines()
+                for line in lines:
+                    if line.startswith("ID:"):
+                        ids.add(line.replace("ID:", "").strip())
+        print(f"✅ {len(ids)} gesendete IDs erkannt.")
+        return ids
+    except TelegramError as e:
+        print(f"⚠️ Fehler beim Lesen der Log-IDs: {e}")
+        return set()
+
+# 📤 Neue gesendete ID in Telegram loggen
+def log_sent_id(item_id):
+    try:
+        bot.send_message(chat_id=TG_LOG_CHAT_ID, text=f"ID: {item_id}")
+    except TelegramError as e:
+        print(f"⚠️ Fehler beim Loggen in Telegram: {e}")
+
+# 🔧 Instaloader vorbereiten
+loader = instaloader.Instaloader(
+    download_videos=True,
+    save_metadata=False,
+    download_comments=False,
+    post_metadata_txt_pattern="",
+    dirname_pattern="downloads"
+)
+
+# 🔐 Instagram Login
+try:
+    loader.login(IG_USER, IG_PASS)
+    print("✅ Instagram Login erfolgreich")
+except Exception as e:
+    print(f"❌ Login fehlgeschlagen: {e}")
+    exit(1)
+
+# 🔎 Zielprofil laden
+try:
+    profile = instaloader.Profile.from_username(loader.context, TARGET)
+    print(f"📡 Zielprofil geladen: {profile.username}")
+except Exception as e:
+    print(f"❌ Fehler beim Laden des Zielprofils: {e}")
+    exit(1)
+
+# 📑 Bereits gesendete IDs laden
+sent_items = load_sent_ids()
+new_content_found = False
+
+# 📥 Stories abrufen und verarbeiten
+for story in loader.get_stories(userids=[profile.userid]):
+    for item in story.get_items():
+        item_id = str(item.mediaid)
+        if item_id in sent_items:
+            print(f"⏭️ Bereits gesendet: {item_id}")
+            continue
+
+        print(f"📥 Lade neue Story-ID: {item_id}")
+        try:
+            path = loader.download_storyitem(item, TARGET)
+        except Exception as e:
+            print(f"⚠️ Fehler beim Herunterladen von Story {item_id}: {e}")
+            continue
+
+        if not os.path.exists(path):
+            print("⚠️ Kein gültiger Download-Pfad – wird übersprungen.")
+            continue
+
+        sent = False
+        for file in os.listdir(path):
+            full_path = os.path.join(path, file)
+            try:
+                with open(full_path, "rb") as f:
+                    if file.endswith(".mp4"):
+                        print(f"📤 Sende Video: {file}")
+                        bot.send_video(chat_id=TG_CHAT_ID, video=f)
+                        sent = True
+                    elif file.endswith(".jpg"):
+                        print(f"📤 Sende Bild: {file}")
+                        bot.send_photo(chat_id=TG_CHAT_ID, photo=f)
+                        sent = True
+                if sent:
+                    log_sent_id(item_id)
+                    new_content_found = True
+                    break  # Nur 1 Datei pro Story senden
+            except Exception as e:
+                print(f"⚠️ Fehler beim Senden: {e}")
+
+# 🧹 Downloads löschen
+if os.path.exists("downloads"):
+    shutil.rmtree("downloads")
+    print("🧼 Downloads gelöscht")
+
+if not new_content_found:
+    print("ℹ️ Keine neuen Storys gefunden.")
