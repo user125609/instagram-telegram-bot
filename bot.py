@@ -5,8 +5,6 @@ from telegram.error import TelegramError
 import shutil
 
 # 🔐 Umgebungsvariablen
-IG_USER = os.getenv('INSTAGRAM_USERNAME')
-IG_PASS = os.getenv('INSTAGRAM_PASSWORD')
 TG_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 TG_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
 TG_LOG_CHAT_ID = os.getenv('TELEGRAM_LOG_CHAT_ID')
@@ -14,6 +12,9 @@ TARGET = os.getenv('TARGET_USERNAME')
 
 # 📲 Telegram-Bot initialisieren
 bot = Bot(token=TG_TOKEN)
+
+# ✅ Testnachricht nach Bot-Start
+bot.send_message(chat_id=TG_LOG_CHAT_ID, text="✅ Bot wurde erfolgreich gestartet (Cookie-Login aktiv)")
 
 # 📥 Bereits gesendete IDs aus Telegram laden
 def load_sent_ids():
@@ -40,7 +41,7 @@ def log_sent_id(item_id):
     except TelegramError as e:
         print(f"⚠️ Fehler beim Loggen in Telegram: {e}")
 
-# 🔧 Instaloader vorbereiten
+# 🔧 Instaloader vorbereiten mit Cookie
 loader = instaloader.Instaloader(
     download_videos=True,
     save_metadata=False,
@@ -49,12 +50,12 @@ loader = instaloader.Instaloader(
     dirname_pattern="downloads"
 )
 
-# 🔐 Instagram Login
+# 📎 Cookie-Datei laden (Name = Benutzername der Session-Datei)
 try:
-    loader.login(IG_USER, IG_PASS)
-    print("✅ Instagram Login erfolgreich")
+    loader.load_session_from_file('user25180_u')
+    print("✅ Session-Cookie geladen und Login aktiv")
 except Exception as e:
-    print(f"❌ Login fehlgeschlagen: {e}")
+    print(f"❌ Fehler beim Laden der Session: {e}")
     exit(1)
 
 # 🔎 Zielprofil laden
