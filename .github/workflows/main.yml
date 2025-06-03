@@ -3,7 +3,7 @@ name: Instagram to Telegram Bot
 on:
   workflow_dispatch:
   schedule:
-    - cron: '*/30 * * * *'  # Alle 30 Minuten ausführen
+    - cron: '*/30 * * * *' # Alle 30 Minuten
 
 jobs:
   run-bot:
@@ -21,8 +21,10 @@ jobs:
     - name: Install dependencies
       run: |
         pip install -r requirements.txt
+        pip install playwright
+        playwright install
 
-    - name: Restore Instagram session from GitHub Secret
+    - name: Restore Instagram session from secret
       run: |
         mkdir -p ~/.config/instaloader
         echo "${{ secrets.IG_SESSION_COOKIE }}" | base64 -d > ~/.config/instaloader/session-user25180_u
