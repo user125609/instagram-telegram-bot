@@ -1,9 +1,9 @@
 name: Instagram to Telegram Bot
 
 on:
-  workflow_dispatch:
   schedule:
-    - cron: '*/30 * * * *'  # Alle 30 Minuten
+    - cron: '0 9,18 * * *' # 2x täglich um 09:00 und 18:00 Uhr
+  workflow_dispatch:
 
 jobs:
   run-bot:
@@ -21,7 +21,7 @@ jobs:
     - name: Install dependencies
       run: |
         pip install -r requirements.txt
-        python -m playwright install
+        python -m playwright install chromium
 
     - name: Restore Instagram session from secret
       run: |
@@ -34,5 +34,6 @@ jobs:
         TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         TELEGRAM_LOG_CHAT_ID: ${{ secrets.TELEGRAM_LOG_CHAT_ID }}
         TARGET_USERNAME: ${{ secrets.TARGET_USERNAME }}
+        IG_FALLBACK_ENABLED: true
       run: |
         python3 bot.py
