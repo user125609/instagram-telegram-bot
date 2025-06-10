@@ -1,11 +1,9 @@
 import os
-import shutil
-import time
+import asyncio
 from telegram import Bot
 from telegram.error import TelegramError
-from playwright.sync_api import sync_playwright
+from playwright.async_api import async_playwright
 
-# 📲 Telegram-Bot initialisieren
 TG_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 TG_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
 TG_LOG_CHAT_ID = os.getenv('TELEGRAM_LOG_CHAT_ID')
@@ -13,60 +11,48 @@ TARGET = os.getenv('TARGET_USERNAME')
 
 bot = Bot(token=TG_TOKEN)
 
-def send_log(message):
+async def send_telegram_message(text):
     try:
-        bot.send_message(chat_id=TG_LOG_CHAT_ID, text=message)
-    except Exception as e:
-        print(f"Fehler beim Senden der Lognachricht: {e}")
+        await bot.send_message(chat_id=TG_LOG_CHAT_ID, text=text)
+    except TelegramError as e:
+        print(f"Telegram Error: {e}")
 
-send_log("🚀 Bot gestartet (Fallback-Modus aktiv)")
+async def download_from_instasupersave(username):
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=True)
+        page = await browser.new_page()
 
-# 📥 Fallback über instasupersave.com
-def download_stories_via_fallback():
-    with sync_playwright() as p:
         try:
-            browser = p.chromium.launch(headless=True)
-            page = browser.new_page()
-            page.goto("https://instasupersave.com/de/instagram-stories/", timeout=60000)
+            await page.goto("https://instasupersave.com/de/instagram-stories/", timeout=60000)
+            await page.fill("input[name='url']", f"https://www.instagram.com/{username}/")
+            await page.click("button:has-text('Suchen')")
 
-            page.fill("input[name='url']", f"https://instagram.com/{TARGET}")
-            page.click("button:has-text('Suchen')")
-            page.wait_for_selector("div.story-list-item", timeout=20000)
+            await page.wait_for_selector(".content-box a", timeout=15000)
 
-            story_elements = page.query_selector_all("div.story-list-item")
-            if not story_elements:
-                send_log("ℹ️ Keine Storys gefunden (Fallback).")
-                return
+            story_links = await page.locator(".content-box a").element_handles()
+            count = 0
 
-            os.makedirs("downloads", exist_ok=True)
+            for link in story_links:
+                url = await link.get_attribute("href")
+                if url and ("story" in url or "stories" in url):
+                    count += 1
+                    await bot.send_message(chat_id=TG_CHAT_ID, text=f"📲 Story gefunden:\n{url}")
+                    if count >= 3:
+                        break
 
-            for i, el in enumerate(story_elements):
-                link = el.query_selector("a").get_attribute("href")
-                if not link:
-                    continue
-                page.goto(link)
-                download_link = page.query_selector("a[href*='/download']")
-                if download_link:
-                    url = download_link.get_attribute("href")
-                    file_ext = ".mp4" if ".mp4" in url else ".jpg"
-                    filename = f"downloads/story_{i}{file_ext}"
-                    page.goto(url)
-                    with open(filename, "wb") as f:
-                        f.write(page.content().encode())
-                    with open(filename, "rb") as f:
-                        if file_ext == ".mp4":
-                            bot.send_video(chat_id=TG_CHAT_ID, video=f)
-                        else:
-                            bot.send_photo(chat_id=TG_CHAT_ID, photo=f)
-                    time.sleep(3)
-            send_log(f"✅ Fallback erfolgreich. {len(story_elements)} Storys gesendet.")
-            browser.close()
+            if count == 0:
+                await send_telegram_message("ℹ️ Keine Stories gefunden.")
+            else:
+                await send_telegram_message(f"✅ {count} Story-Link(s) gesendet.")
+
         except Exception as e:
-            send_log(f"❌ Fallback fehlgeschlagen: {e}")
+            await send_telegram_message(f"❌ Fallback fehlgeschlagen: {e}")
+        finally:
+            await browser.close()
 
-# Starte Fallback-Download
-download_stories_via_fallback()
+async def main():
+    await send_telegram_message("✅ Fallback-Bot wurde gestartet")
+    await download_from_instasupersave(TARGET)
 
-# Downloads löschen
-if os.path.exists("downloads"):
-    shutil.rmtree("downloads")
+if __name__ == "__main__":
+    asyncio.run(main())
