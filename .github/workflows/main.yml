@@ -1,8 +1,8 @@
-name: Instagram to Telegram Bot
+name: Telegram Fallback Bot
 
 on:
   schedule:
-    - cron: '0 9,18 * * *' # 2x täglich um 09:00 und 18:00 Uhr
+    - cron: '0 9,18 * * *'  # Zweimal täglich um 09:00 und 18:00 Uhr
   workflow_dispatch:
 
 jobs:
@@ -21,19 +21,12 @@ jobs:
     - name: Install dependencies
       run: |
         pip install -r requirements.txt
-        python -m playwright install chromium
 
-    - name: Restore Instagram session from secret
-      run: |
-        mkdir -p ~/.config/instaloader
-        echo "${{ secrets.IG_SESSION_COOKIE }}" | base64 -d > ~/.config/instaloader/session-user25180_u
-
-    - name: Run bot
+    - name: Run fallback bot
       env:
         TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         TELEGRAM_LOG_CHAT_ID: ${{ secrets.TELEGRAM_LOG_CHAT_ID }}
         TARGET_USERNAME: ${{ secrets.TARGET_USERNAME }}
-        IG_FALLBACK_ENABLED: true
       run: |
         python3 bot.py
